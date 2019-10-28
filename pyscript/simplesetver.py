@@ -9,8 +9,8 @@ class Client(BaseHTTPRequestHandler):
 		content_len = int(self.headers.get('content-length'))
 		requestBody = self.rfile.read(content_len).decode('ascii')
 		print(requestBody)
-		requestJson = json.loads(requestBody)
-		print(requestJson)
+		# requestJson = json.loads(requestBody)
+		# print(requestJson)
 		print("length = " + str(content_len))
 		body = b'OK' # 返す文字列
 		self.send_response(200)
@@ -20,6 +20,6 @@ class Client(BaseHTTPRequestHandler):
 		self.wfile.write(body)
 
 
-
-server = HTTPServer(('', 86), Client)
-server.serve_forever()
+def set_server():
+	server = HTTPServer(('', 87), Client)
+	server.serve_forever()

@@ -13,15 +13,17 @@ const char* password = "8gAp3nY!s2Gm"; //サーバーのパスワード
 //const char* ssid="Prototyping & Design Lab. 5GHz"; //サーバーのSSID
 //const char* pass=""; //サーバーのパスワード
 
-
 //const char* host = "192.168.2.110";
 const char* host = "157.82.207.143";
 
 //const int IND_NUM = 10;
 //const int EXECUTE_NUM = 3;
-
+const int STEP_MAX = 5;
 int state, ind_count;
-int action, steps;
+int action;
+int steps = 0;
+int episode = 0;
+int Qsteps;
 String action_steps[2] = {"\0"};
 
 String postToServer(String Name = "", String Data = " ");
@@ -78,6 +80,8 @@ void setup() {
   myservo1.attach(2);
   myservo2.attach(4);
   myservo3.attach(18);
+//  postToServer("_reset", String(steps));
+  postToServer("set_espStep", String(steps));
 }
 
 //実行
@@ -87,7 +91,7 @@ void execute(int state) {
 
   if (state == 0) {
     //遺伝子待機
-    delay(5000);
+    delay(3000);
   }
   else if (state == 1) {
     //動作
@@ -95,7 +99,7 @@ void execute(int state) {
   }
   else if (state == 2) {
     //測位待機
-    delay(500);
+    delay(300);
   }
   else if (state == 3) {
     //遺伝子の更新待機
@@ -111,20 +115,17 @@ void execute(int state) {
 //状態更新
 void setNextState(int currentstate) {
   if (currentstate == 0) {
-    String action_steps_tmp = postToServer("get_action_step");
-    Serial.println(action_steps_tmp);
-    split(action_steps_tmp, ',', action_steps);
-    action = action_steps[0].toInt();
-    steps = action_steps[1].toInt();
-    Serial.println(action);
-    Serial.println(steps);
-    //（初回のみ）
-    if (action == -1 && steps == -1) {
-      Serial.println("no action yet");
+    int episodeStart = postToServer("get_episodeStart").toInt();
+    if (episodeStart == 0) {
+      Serial.println("not ready");
       state = 0;
     }
     //取得
     else {
+      String action_steps_tmp = postToServer("get_action_step");
+      split(action_steps_tmp, ',', action_steps);
+      action = action_steps[0].toInt();
+      steps = action_steps[1].toInt();
       Serial.println("action start");
       state = 1;
     }
@@ -132,27 +133,36 @@ void setNextState(int currentstate) {
   else if (currentstate == 1) {
     //動作終了
     steps = steps + 1;
-    Serial.println(postToServer("set_espStep", String(steps)));
+    postToServer("set_espStep", String(steps));
     Serial.print("Current steps: ");
     Serial.println(String(steps));
     state = 2;
   }
   else if (currentstate == 2) {
     String action_steps_tmp = postToServer("get_action_step");
-    Serial.println(action_steps_tmp);
     split(action_steps_tmp, ',', action_steps);
     action = action_steps[0].toInt();
-    int pastSteps = steps;
-    steps = action_steps[1].toInt();
-    Serial.println(action);
-    Serial.println(steps);
-    if (steps == pastSteps) {
-      Serial.println("no action yet");
-      state = 2;
+    Qsteps = action_steps[1].toInt();
+    if(action == -1){
+      ESP.restart();
+      }
+    if (steps != Qsteps) {
+      if (steps % STEP_MAX == Qsteps) {
+        Serial.println("next episode");
+        steps = 0;
+        state = 0;
+        episode++;
+      }
+      else {
+        Serial.println("no action yet");
+        state = 2;
+      }
     }
     else {
+      Serial.println("next step");
       state = 1;
     }
+
   }
   else if (currentstate == 3) {
     //遺伝子の更新完了
@@ -182,8 +192,6 @@ void loop() {
   ArduinoOTA.handle();
   Serial.println("Current State is " + String(state));
   execute(state);
-  //  const String response = postToServer("{\"Name\":\"get_indivisuals\"}");
-  //  Serial.println(response);
 }
 
 //ここから便利ツール的関数
@@ -192,6 +200,9 @@ int split(String data, char delimiter, String * dst) {
   int index = 0;
   int arraySize = (sizeof(data) / sizeof((data)[0]));
   int datalength = data.length();
+  //今回だけ
+  dst[0] = "";
+  dst[1] = "";
   for (int i = 0; i < datalength; i++) {
     char tmp = data.charAt(i);
     if ( tmp == delimiter ) {
@@ -226,7 +237,7 @@ String postToServer(String Name, String Data) {
                      "Connection: close\r\n\r\n";
   const String request = str + bodyJ;
   client.print(request);
-  Serial.println(request);
+  //  Serial.println(request);
   unsigned long timeout = millis();
   while (client.available() == 0) {
     if (millis() - timeout > 5000) {
@@ -243,7 +254,7 @@ String postToServer(String Name, String Data) {
     //    Serial.print(line);
   }
 
-  Serial.println();
+  Serial.println(response);
   Serial.println("closing connection");
   return response;
 }

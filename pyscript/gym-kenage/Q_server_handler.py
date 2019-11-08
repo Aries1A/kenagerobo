@@ -4,9 +4,12 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import threading
 
-action = -1
-QStep = -1
+action = 0
+QStep = 0
 espStep = 0
+episodeStart = 0
+goHome = 0
+moving = 0
 
 class Client(BaseHTTPRequestHandler):
     """
@@ -18,7 +21,7 @@ class Client(BaseHTTPRequestHandler):
     - get_fit_val: kenage_ga.pyにfit_valを送る
     """
     def do_POST(self):
-        global action, QStep, espStep
+        global action, QStep, espStep,episodeStart,goHome,moving
         # 受け取ったデータ
         content_len = int(self.headers.get('content-length'))
         requestBody = self.rfile.read(content_len).decode('ascii')
@@ -29,19 +32,25 @@ class Client(BaseHTTPRequestHandler):
         #esp32
         # 次に行うactionを取得
         if requestJson["Name"] == "get_action_step":
-            try:
-                body_raw = str(action) + "," + str(QStep)
-                body =  body_raw.encode('utf-8')
-            except:
-                body = b"-1,-1"
+            body_raw = str(action) + "," + str(QStep)
+            body =  body_raw.encode('utf-8')
+        # episodeの準備状態を取得
+        elif requestJson["Name"] == "get_episodeStart":
+            body = str(episodeStart).encode("utf-8")
         # 動作終了報告
         elif requestJson["Name"] == "set_espStep":
             espStep = int(requestJson["Data"])
             body = b"espStep set"
 
         # Q.py
+        # episodeの準備状態を送信
+        elif requestJson["Name"] == "set_episodeStart":
+            episodeStart = requestJson["Data"]
+            if episodeStart == "0":
+                body = b"episode not ready."
+            else:
+                body = b"episode ready."
         # 現在のactionをサーバーに記録
-
         elif requestJson["Name"] == "set_action":
             action = int(requestJson["Data"])
             body = b"action set"
@@ -57,13 +66,34 @@ class Client(BaseHTTPRequestHandler):
         elif requestJson["Name"] == "_reset":
             QStep = 0
             espStep = 0
-            action = -1
+            action = 0
+            episodeStart = 0
             body = b"reset observation"
         elif requestJson["Name"] == "send_calib":
             with open("../../MPUcalib/calib_data/11_5.csv","a") as f:
                 f.write(requestJson["Data"])
                 f.write("\n")
             body = b"get calib_data"
+        # goHome状態を送信
+        elif requestJson["Name"] == "set_goHome":
+            goHome = requestJson["Data"]
+            if goHome == "0":
+                body = b"not goHome."
+            else:
+                body = b"goHome."
+        elif requestJson["Name"] == "get_moving":
+            body = str(moving).encode("utf-8")
+
+        # 巻き取り機
+        elif requestJson["Name"] == "get_goHome":
+            body = str(goHome).encode("utf-8")
+        elif requestJson["Name"] == "set_moving":
+            moving = requestJson["Data"]
+            if moving == "0":
+                body = b"not moving."
+            else:
+                body = b"moving."
+
         else:
             body = b"not match any request"
         self.send_response(200)
@@ -71,6 +101,7 @@ class Client(BaseHTTPRequestHandler):
         self.send_header('Content-length', len(body))
         self.end_headers()
         self.wfile.write(body)
+        print("response: {}".format(body))
 
 
 def set_server():

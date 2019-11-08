@@ -18,18 +18,20 @@ class KenageEnv(gym.Env):
     def __init__(self):
         super().__init__()
         # action_space, observation_space, reward_range を設定する
-        self.action_space = gym.spaces.Discrete(12)
-        self.observation_space = spaces.Dict({
+        self.action_space = gym.spaces.Discrete(12) #行動は12通り
+        self.observation_space = spaces.Dict({ # 状態空間は(x,y,angle)
             "pos_x": spaces.Box(low = 0, high = self.size_x, shape=(1,)),
             "pos_y": spaces.Box(low = 0, high = self.size_y, shape=(1,)),
             "robo_angle": spaces.Box(low=0, high=360, shape=(1, ))
             })
-        self.reward_range = [-10,100.]
+        self.reward_range = [-10,100.] #報酬の範囲
         self._reset()
 
     def _reset(self): #状態を初期化、初期の観測値を返す
+        #初期位置を取得
         self._find_pos()
-        self.robo_angle = 0
+        #初期向きを取得
+        self._find_angle()
         self.done = False
         self.step = 0
         POST(name="_reset")
@@ -41,7 +43,7 @@ class KenageEnv(gym.Env):
             if response != self.step + 1:
                 print("waiting esp....")
                 print("get espStep is {}".format(response))
-                time.sleep(1)
+                time.sleep(0.3)
             else:
                 print("esp step done")
                 break

@@ -3,6 +3,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import threading
 from calc_fitness import calc_fitness
+from gene_data_handler import get_esp_indivisuals
 
 class Client(BaseHTTPRequestHandler):
     """
@@ -27,9 +28,10 @@ class Client(BaseHTTPRequestHandler):
         #今の世代のpopulationを取得
         if requestJson["Name"] == "get_indivisuals":
             try:
-                body = indivisuals.encode("UTF-8")
+
+                body = get_esp_indivisuals(indivisuals)
             except:
-                body = b""
+                body = b"0"
         #動作実行後に進んだ距離の計算を開始する信号を送る
         elif requestJson["Name"] == "calc_fit_val":
             print(indivisuals,ind_index)
@@ -46,13 +48,14 @@ class Client(BaseHTTPRequestHandler):
         #学習終了かどうか取得
         elif requestJson["Name"] == "get_isStop":
             body = str(isStop).encode("utf-8")
+
         # GA.py
         #今の世代のpopulationを更新
         elif requestJson["Name"] == "set_indivisuals":
             indivisuals = requestJson["Data"]
             fit_vals = ""
             ind_index = 0
-            isStop = 1
+            isStop = 0
             body = b"changed"
         #適応度を取得
         elif requestJson["Name"] == "get_fit_val":
@@ -61,7 +64,8 @@ class Client(BaseHTTPRequestHandler):
         #終了
         elif requestJson["Name"] == "complete":
             ind_index = 0
-            isStop = 0
+            isStop = 1
+            body = b"complete"
         else:
             body = b"Name does not match any key"
 

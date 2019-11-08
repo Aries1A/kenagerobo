@@ -2,6 +2,8 @@
 #include<WiFi.h>
 const char *ssid="elecom2g-c08850"; //サーバーのSSID
 const char *pass="3A7344CE7169FD2122B9F397AA3EB79F212E5E0741AEF3BB5A5E6BC652F15C0F"; //サーバーのパスワード
+//const char *ssid="ist_members"; //サーバーのSSID
+//const char *pass="8gAp3nY!s2Gm"; //サーバーのパスワード
 static WiFiClient client; //WiFiClient型でclientと宣言
 #define TIME 10
 #define uS 1000*1000
@@ -22,8 +24,8 @@ bool server_connect()
   if(WiFi.status()==WL_CONNECTED)
   {
     Serial.println("WiFi Connected");
-    IPAddress ip(192, 168, 0, 9); //サーバーのIPアドレス
-    client.connect(ip, 80); //IPアドレスとポート番号を指定して接続
+    IPAddress ip(192, 168, 2, 110); //サーバーのIPアドレス
+    Serial.println(client.connect(ip, 80)); //IPアドレスとポート番号を指定して接続
     return true;
   }
   else if(try_count == 10)
@@ -62,7 +64,7 @@ void loop()
   if(client.connected()==true)
   {
     Serial.println("Massage Send");
-    client.println("Hello");
+    client.println("{\"Name\":\"get_individuals\"}");
     client.stop();
     WiFi.disconnect();
     esp_deep_sleep_start();

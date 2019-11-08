@@ -4,11 +4,11 @@ from deap import base
 from deap import creator
 from deap import tools
 from request_handler import POST
-from gene_data_handler import write_individuals, load_individuals
+from gene_data_handler import write_indivisuals, load_indivisuals
 import sys
 
 #交叉率、個体突然変異率、ループを回す世代数,一世代の個体数,遺伝子の長さ
-CXPB, MUTPB, NGEN,NIND,LGENE = 0.5, 0.2, 10, 8, 16
+CXPB, MUTPB, NGEN,NIND,LGENE = 0.5, 0.2, 2, 10, 24
 
 creator.create("FitnessMax", base.Fitness, weights=(1.0,)) #目的関数を最大化
 creator.create("Individual", list, fitness=creator.FitnessMax) #適応度fitnessのメンバ変数を追加
@@ -36,7 +36,7 @@ def evalOneMax(individual): #評価関数
 
 toolbox.register("evaluate", evalOneMax) #評価関数
 toolbox.register("mate", tools.cxTwoPoint) #交叉
-toolbox.register("mutate", tools.mutFlipBit, indpb=0.05) #突然変異関数、5%
+toolbox.register("mutate", tools.mutFlipBit, indpb=0.1) #突然変異関数、5%
 toolbox.register("select", tools.selTournament, tournsize=3) #選択関数
 
 
@@ -44,16 +44,16 @@ def main(mode,filename):
     random.seed(64)
 
     #学習を途中から開始するモード
-    if mode == "L":
+    if mode == "LP":
         try:
-            pop = load_individuals(filename) #既存の世代をロード
+            pop = load_indivisuals(filename) #既存の世代をロード
             pop = [creator.Individual(l) for l in pop] #Individual型に変更
         except FileNotFoundError:
             pop = toolbox.population(n=NIND) #初期世代を作成
     #新しく学習を開始するモード
-    elif mode == "N":
+    elif mode == "NP":
         pop = toolbox.population(n=NIND) #初期世代を作成
-        write_individuals(pop=pop,filename=filename)
+        write_indivisuals(pop=pop,filename=filename,mode="w")
 
     else:
         exit(1)
@@ -65,7 +65,7 @@ def main(mode,filename):
     for ind, fit in zip(pop, fitnesses): # 初期世代の各個体の適応度を記録
         ind.fitness.values = fit
 
-    print("  Evaluated %i individuals" % len(pop))
+    print("  Evaluated %i indivisuals" % len(pop))
 
     for g in range(NGEN):
         print("-- Generation %i --" % g)
@@ -73,7 +73,7 @@ def main(mode,filename):
         offspring = toolbox.select(pop, len(pop)) #適応度を元に次世代の親となる子孫選択
         offspring = list(map(toolbox.clone, offspring))
 
-        for child1, child2 in zip(offspring[::2], offspring[1::2]):
+        for child1, child2 in zip(offspring[:int(len(offspring)/2)], offspring[int(len(offspring)/2):]):
 
             if random.random() < CXPB:
                 toolbox.mate(child1, child2)
@@ -93,12 +93,12 @@ def main(mode,filename):
         for ind, fit in zip(invalid_ind, fitnesses):
             ind.fitness.values = fit
 
-        print("  Evaluated %i individuals" % len(invalid_ind))
+        print("  Evaluated %i indivisuals" % len(invalid_ind))
 
         pop[:] = offspring
 
         # 最新の世代を保存
-        write_individuals(pop=pop,filename=filename)
+        write_indivisuals(pop=pop,filename=filename)
 
         fits = [ind.fitness.values[0] for ind in pop]
 
@@ -120,4 +120,5 @@ def main(mode,filename):
 
 if __name__ == "__main__":
     args = sys.argv
+    print(args)
     main(args[1],args[2])

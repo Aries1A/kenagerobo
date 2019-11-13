@@ -3,10 +3,10 @@ import gym_kenage
 import numpy as np
 import time
 from Q_request_handler import POST
-from go_home import go_home
+from go_home import go_home,leave_home,distance,stop_roll
 
 # フィールドの大きさ
-size_x = 180
+size_x = 270
 size_y = 180
 
 # 離散化
@@ -16,7 +16,6 @@ def bins(clip_min, clip_max, num):
     return np.linspace(clip_min, clip_max, num + 1)[1:-1]
 
 # 状態を離散化
-
 
 def digitize_state(observation):
     pos_x, pos_y, robo_angle = observation.values()
@@ -69,7 +68,7 @@ if __name__ == '__main__':
     for episode in range(num_episodes):  # 試行回数分繰り返す
         POST(name="set_QStep",data="0")
         # homeポジションに移動
-        go_home()
+        # go_home()
         # 環境の初期化
         observation = env._reset()
         # 状態の離散化
@@ -87,10 +86,16 @@ if __name__ == '__main__':
             print("action: {},step: {}".format(action, env.step))
             if islearned == 1:  # 学習完了時の操作
                 pass
+            # 弛ませながら移動
+            # POST(name="set_goHome",data="-1")
+            # leave_home()
             # 行動a_{t}の実行によって、s_{t+1},r_{t}などを計算する
             observation, reward, done, info=env._step(action)  # ここでESP32の実行待ち
+            print(observation)
+            print(reward)
             episode_reward += reward  # 報酬を追加
-
+            # 巻き取り停止
+            stop_roll()
             # 離散状態s_{t+1}を求め、Q関数を更新する
             next_state=digitize_state(observation)  # t+1での観測状態を離散値に変換
             q_table=update_Qtable(q_table, state, action, reward, next_state)

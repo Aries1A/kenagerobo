@@ -4,30 +4,39 @@ import gym
 from gym import error, spaces, utils
 from gym.utils import seeding
 import numpy as np
-from get_position import get_position,get_angle
+from get_position import get_position,get_angle,get_goal,change_base
 from Q_request_handler import POST # なぜかgym_kenageに置かないとerror吐く
 import time
+from go_home import distance, stop_roll
 
 
 class KenageEnv(gym.Env):
     metadata = {'render.modes':['human']}
     #フィールドの大きさ
-    size_x = 180
+    size_x = 270
     size_y = 180
 
     def __init__(self):
-        super().__init__()
+        # super().__init__()
         # action_space, observation_space, reward_range を設定する
-        self.action_space = gym.spaces.Discrete(12) #行動は12通り
+        self.action_space = gym.spaces.Discrete(6) #行動
         self.observation_space = spaces.Dict({ # 状態空間は(x,y,angle)
             "pos_x": spaces.Box(low = 0, high = self.size_x, shape=(1,)),
             "pos_y": spaces.Box(low = 0, high = self.size_y, shape=(1,)),
             "robo_angle": spaces.Box(low=0, high=360, shape=(1, ))
             })
         self.reward_range = [-10,100.] #報酬の範囲
+        self.pos_x = 20
+        self.pos_y = 20
+        self.robo_angle = 20
+        self.camera_num = 1
+        print("pos_x={} pos_y={}".format(self.pos_x,self.pos_y))
+
         self._reset()
 
     def _reset(self): #状態を初期化、初期の観測値を返す
+        print("pos_x={} pos_y={}".format(self.pos_x,self.pos_y))
+
         #初期位置を取得
         self._find_pos()
         #初期向きを取得
@@ -35,6 +44,8 @@ class KenageEnv(gym.Env):
         self.done = False
         self.step = 0
         POST(name="_reset")
+        print("pos_x={} pos_y={}".format(self.pos_x,self.pos_y))
+        # change_base(self.camera_num)
         return self._observe()
 
     def _step(self, action): #actionを実行、結果を返す
@@ -57,6 +68,8 @@ class KenageEnv(gym.Env):
         #ここで位置と角度を測定
         self._find_pos()
         self._find_angle()
+        self._find_goal()
+        self.goal_distance = distance(self.pos_x,self.pos_y,self.goal_x,self.goal_y)
         observation = {"pos_x":self.pos_x,
                         "pos_y":self.pos_y,
                         "robo_angle":self.robo_angle}
@@ -68,17 +81,17 @@ class KenageEnv(gym.Env):
         pass
     def _reward(self):
         # ゴールに到達
+        reward = 0
         if self._is_goal():
-            return 100
-        #
+            reward += 100
         elif not self._is_movable():
-            return -5
+            reward += -10
         else:
-            return -1
+            reward += -1
+            reward += distance(264,135,self.goal_x,self.goal_y) - distance(self.pos_x,self.pos_y,self.goal_x,self.goal_y)
+        return reward
     def _is_goal(self):
-
-        pass
-
+        return distance(self.pos_x,self.pos_y,self.goal_x,self.goal_y) < 30
     def _is_movable(self):
         pass
 
@@ -91,6 +104,9 @@ class KenageEnv(gym.Env):
 
     def _find_pos(self):
         #Webカメラで位置を測る
-        self.pos_x,self.pos_y = get_position()
+        self.pos_x,self.pos_y = get_position(self.camera_num)
+        print("pos_x={} pos_y={}".format(self.pos_x,self.pos_y))
     def _find_angle(self):
         self.robo_angle = get_angle()
+    def _find_goal(self):
+        self.goal_x,self.goal_y = get_goal()

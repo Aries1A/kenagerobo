@@ -10,6 +10,7 @@ espStep = 0
 episodeStart = 0
 goHome = 0
 moving = 0
+angle = 0
 
 class Client(BaseHTTPRequestHandler):
     """
@@ -21,7 +22,8 @@ class Client(BaseHTTPRequestHandler):
     - get_fit_val: kenage_ga.pyにfit_valを送る
     """
     def do_POST(self):
-        global action, QStep, espStep,episodeStart,goHome,moving
+        print(self)
+        global action, QStep, espStep,episodeStart,goHome,moving,angle
         # 受け取ったデータ
         content_len = int(self.headers.get('content-length'))
         requestBody = self.rfile.read(content_len).decode('ascii')
@@ -41,6 +43,10 @@ class Client(BaseHTTPRequestHandler):
         elif requestJson["Name"] == "set_espStep":
             espStep = int(requestJson["Data"])
             body = b"espStep set"
+        # angle送信
+        elif requestJson["Name"] == "set_angle":
+            angle = int(requestJson["Data"])
+            body = b"angle set"
 
         # Q.py
         # episodeの準備状態を送信
@@ -81,8 +87,13 @@ class Client(BaseHTTPRequestHandler):
                 body = b"not goHome."
             else:
                 body = b"goHome."
+        #巻き取り機が動いているか取得
         elif requestJson["Name"] == "get_moving":
             body = str(moving).encode("utf-8")
+        #angle取得
+        elif requestJson["Name"] == "get_angle":
+            body = str(angle).encode("utf-8")
+
 
         # 巻き取り機
         elif requestJson["Name"] == "get_goHome":

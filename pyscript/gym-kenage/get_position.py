@@ -1,12 +1,15 @@
 from Q_request_handler import POST
+from udp import send_pos
 #Webカメラで位置を測定
 import cv2
 import math
 import numpy as np
 import os
 
-x = 264
-y = 135
+pos_x = 0
+pos_y = 45
+post_pos_x = 0
+post_pos_y = 45
 
 # 線分ABと線分CDの交点を求める関数
 def _calc_cross_point(pointA, pointB, pointC, pointD):
@@ -23,17 +26,21 @@ def _calc_cross_point(pointA, pointB, pointC, pointD):
     cross_point = [int(pointA[0] + distance[0]), int(pointA[1] + distance[1])]
     return cross_point
 
-A = [63, 291]
-B = [341, 147]
-C = [1217,94]
-D = [963,11]
-S1 = A
-S2 = [545,685]
-S3 = _calc_cross_point(A,B,C,D)
-S4 = C
+
+A = [68, 540]
+B = [559,659]
+C = [1053,16]
+D = [1086,560]
+S1 = [23,177] #左上
+S2 = A #左下
+S3 = C #右上
+S4 = _calc_cross_point(A,B,C,D)  #右下
+width = 270 * 3
+height = 90 * 3
+
 
 def get_position(n):
-    global x,y
+    global pos_x,pos_y,post_pos_x,post_pos_y
     cap = cv2.VideoCapture(n)
     if not cap.isOpened():
         return
@@ -42,26 +49,20 @@ def get_position(n):
     # 変換前後の対応点を設定
 #     p_original = np.float32([ [240,213],[72,510], [1121,220], [1280, 522]])
     p_original = np.float32([S1,S2,S3, S4])
-    p_trans = np.float32([[0,0], [0,720], [1280,0], [1280,720]])
+    p_trans = np.float32([[0,0], [0,height], [width,0], [width,height]])
     # 変換マトリクスと射影変換
     M = cv2.getPerspectiveTransform(p_original, p_trans)
-    trans = cv2.warpPerspective(frame, M, (1280, 720))
+    trans = cv2.warpPerspective(frame, M, (width, height))
     trans = cv2.cvtColor(trans, cv2.COLOR_BGR2GRAY)
 
     # 画像の読み込み
     img_src1 = cv2.imread("../imgs/baseline/base_0.jpg", 0)
     # img_src2 = cv2.imread("./img_square/camera_capture_2.jpg", 0)
     img_src2 = trans
-#     img_src1 = img_src1[20:-20,50:-20]
-#     img_src2 = img_src2[20:-20,50:-20]
-    pts = np.array( [ [425,0], [425,373], [1280, 373], [1280,0] ] )
-    img_src1 = cv2.fillPoly(img_src1, pts =[pts], color=(0,0,0))
-    img_src2 = cv2.fillPoly(img_src2, pts =[pts], color=(0,0,0))
-    pts = np.array( [ [1200,465], [1200,620], [1280, 620], [1280,465] ] )
-    img_src1 = cv2.fillPoly(img_src1, pts =[pts], color=(0,0,0))
-    img_src2 = cv2.fillPoly(img_src2, pts =[pts], color=(0,0,0))
 
-    print(img_src1.shape)
+    # print(img_src1.shape)
+    # print(img_src2.shape)
+
 
     # 背景画像との差分を算出
     img_diff = cv2.absdiff(img_src2, img_src1)
@@ -72,6 +73,8 @@ def get_position(n):
     operator = np.ones((3, 3), np.uint8)
     img_dilate = cv2.dilate(img_diffm, operator, iterations=4)
     img_mask = cv2.erode(img_dilate, operator, iterations=4)
+    kernel = np.ones((5,5),np.float32)/40
+    img_mask = cv2.filter2D(img_mask,-1,kernel)
 
     # マスク画像を使って対象を切り出す
     img_dst = cv2.bitwise_and(img_src2, img_mask)
@@ -80,27 +83,35 @@ def get_position(n):
         # 輪郭に外接する円を取得する。
         center, radius = cv2.minEnclosingCircle(cnt)
         area = cv2.contourArea(cnt)
-        if(area>2200):
-            x = center[0] / img_src1.shape[1]  * 270
-            y = center[1] / img_src1.shape[0] * 180
-            print(x,y,area)
-    return x,y
+#         print(area)
+        if(area>1200 and area < 3000):
+            pos_x = center[0] / img_src1.shape[1]  * width / 3
+            pos_y = center[1] / img_src1.shape[0] * height / 3
+            print(pos_x,pos_y,area)
+    # cv2.imshow('frame',img_dst)
+    # cv2.waitKey(0)
+    # cv2.destroyAllWindows()
+    send_pos(pos_x,pos_y)
+    return pos_x,pos_y
 
 def change_base(n):
     cap = cv2.VideoCapture(n)
     if not cap.isOpened():
         print("no camera")
     ret, frame = cap.read()
+
     # 変換前後の対応点を設定
     p_original = np.float32([S1,S2,S3, S4])
-    p_trans = np.float32([[0,0], [0,720], [1280,0], [1280,720]])# 変換マトリクスと射影変換
+    width = 270 * 3
+    height = 90 * 3
+    p_trans = np.float32([[0,0], [0,height], [width,0], [width,height]])# 変換マトリクスと射影変換
     M = cv2.getPerspectiveTransform(p_original, p_trans)
-    trans = cv2.warpPerspective(frame, M, (1280, 720))
-    # cv2.imshow('frame',trans)
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
+    trans = cv2.warpPerspective(frame, M, (width, height))
+    cv2.imshow('frame',trans)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
     base_path = os.path.join("../imgs/baseline/", "base")
-    cv2.imwrite('{}_{}.{}'.format(base_path, 0, "jpg"), trans)
+    return cv2.imwrite('{}_{}.{}'.format(base_path, 0, "jpg"), trans)
 
 def get_angle():
     robo_angle = int(POST(name="get_angle"))
@@ -108,10 +119,11 @@ def get_angle():
     return robo_angle
 
 def get_goal():
-    goal_x = 170
+    goal_x = 260
     goal_y = 45
     return goal_x, goal_y
 
 if __name__ == '__main__':
-    change_base(1)
-    get_position(1)
+    print(change_base(1))
+
+    # get_position(1)

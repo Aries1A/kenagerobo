@@ -9,27 +9,32 @@ from Q_request_handler import POST # なぜかgym_kenageに置かないとerror�
 import time
 from go_home import distance, stop_roll
 
+HOME_X = 0
+HOME_Y = 45
 
 class KenageEnv(gym.Env):
     metadata = {'render.modes':['human']}
     #フィールドの大きさ
     size_x = 270
-    size_y = 180
+    size_y = 90
 
     def __init__(self):
         # super().__init__()
         # action_space, observation_space, reward_range を設定する
-        self.action_space = gym.spaces.Discrete(6) #行動
+        self.action_space = gym.spaces.Discrete(12) #行動
         self.observation_space = spaces.Dict({ # 状態空間は(x,y,angle)
             "pos_x": spaces.Box(low = 0, high = self.size_x, shape=(1,)),
             "pos_y": spaces.Box(low = 0, high = self.size_y, shape=(1,)),
             "robo_angle": spaces.Box(low=0, high=360, shape=(1, ))
             })
         self.reward_range = [-10,100.] #報酬の範囲
-        self.pos_x = 20
-        self.pos_y = 20
+        self.pos_x = HOME_X
+        self.pos_y = HOME_Y
+        self.post_pos_x = self.pos_x
+        self.post_pos_y = self.pos_y
         self.robo_angle = 20
         self.camera_num = 1
+        self.nonmovable_count = 0
         print("pos_x={} pos_y={}".format(self.pos_x,self.pos_y))
 
         self._reset()
@@ -43,6 +48,7 @@ class KenageEnv(gym.Env):
         self._find_angle()
         self.done = False
         self.step = 0
+        self.nonmovable_count = 0
         POST(name="_reset")
         print("pos_x={} pos_y={}".format(self.pos_x,self.pos_y))
         # change_base(self.camera_num)
@@ -83,20 +89,32 @@ class KenageEnv(gym.Env):
         # ゴールに到達
         reward = 0
         if self._is_goal():
-            reward += 100
-        elif not self._is_movable():
-            reward += -10
+            reward += 1000
         else:
-            reward += -1
-            reward += distance(264,135,self.goal_x,self.goal_y) - distance(self.pos_x,self.pos_y,self.goal_x,self.goal_y)
+            reward += -10
+            if self.pos_x<10 and self.pos_x > 80:
+                reward += -50
+            pos_d =  distance(self.post_pos_x,self.post_pos_y,self.goal_x,self.goal_y)
+            cur_d = distance(self.pos_x,self.pos_y,self.goal_x,self.goal_y)
+            reward += (pos_d - cur_d) * 10
+            print("pos_d:{} cur_d:{} reward:{}".format(pos_d,cur_d,reward))
+        print("post_pos_x= {}".format(self.post_pos_x))
+        print("reward: {}".format(reward))
         return reward
     def _is_goal(self):
         return distance(self.pos_x,self.pos_y,self.goal_x,self.goal_y) < 30
     def _is_movable(self):
-        pass
+        pos_d =  distance(self.post_pos_x,self.post_pos_y,self.goal_x,self.goal_y)
+        cur_d = distance(self.pos_x,self.pos_y,self.goal_x,self.goal_y)
+        if abs(cur_d - pos_d) < 10:
+            self.nonmovable_count += 1
+        else:
+            self.nonmovable_count = 0
+        print("nonmovable_count = {}".format(self.nonmovable_count))
+        return self.nonmovable_count < 10
 
     def _is_done(self):
-        pass
+        return self._is_goal() or not self._is_movable()
 
     def _render(self, mode='human'):
         outfile = sys.stdout
@@ -104,6 +122,8 @@ class KenageEnv(gym.Env):
 
     def _find_pos(self):
         #Webカメラで位置を測る
+        self.post_pos_x = self.pos_x
+        self.post_pos_y = self.pos_y
         self.pos_x,self.pos_y = get_position(self.camera_num)
         print("pos_x={} pos_y={}".format(self.pos_x,self.pos_y))
     def _find_angle(self):

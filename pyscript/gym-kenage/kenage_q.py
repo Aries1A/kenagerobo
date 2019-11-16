@@ -4,10 +4,11 @@ import numpy as np
 import time
 from Q_request_handler import POST
 from go_home import go_home,leave_home,distance,stop_roll
+import datetime
 
 # フィールドの大きさ
 size_x = 270
-size_y = 180
+size_y = 90
 
 # 離散化
 
@@ -38,8 +39,6 @@ def get_action(next_state, episode):
     return next_action
 
 # Qテーブルを更新する関数
-
-
 def update_Qtable(q_table, state, action, reward, next_state):
     gamma = 0.99
     alpha = 0.5
@@ -53,29 +52,36 @@ def update_Qtable(q_table, state, action, reward, next_state):
 # Q学習のmain関数
 if __name__ == '__main__':
     env = gym.make('kenage-v0')
-    max_number_of_steps = 5  # 1試行のstep数
+    max_number_of_steps = 100  # 1試行のstep数
     num_consecutive_iterations = 2  # 学習完了評価に使用する平均試行回数(謎)
     num_episodes = 1000  # 総試行回数
     num_dizitized = 6  # 分割数
-    q_table = np.random.uniform(
-    low=-1, high=1, size=(num_dizitized**3, env.action_space.n))  # q_rableをランダムに初期化 (ここで学習途中のものloadしたら続きからできるかも)
+    try:
+        q_table = np.load(file="./params/q_params.npy")
+        print("q_table loaded")
+    except:
+        q_table = np.random.uniform(
+        low=-1, high=1, size=(num_dizitized**3, env.action_space.n))  # q_rableをランダムに初期化 (ここで学習途中のものloadしたら続きからできるかも)
+        print("q_table init")
+    print(q_table)
     total_reward_vec = np.zeros(num_consecutive_iterations)  # 各試行の報酬を格納
     final_x = np.zeros((num_episodes, 1))  # 学習後、各試行のt=200でのｘの位置を格納
     islearned = 0  # 学習終了フラグ
-
-    POST(name = "set_action", data = "-1") #esp32をreboot
-
+    print("esp reboot")
+    POST(name = "set_action_step", data = "-1,0") #esp32をreboot
+    time.sleep(5)
     for episode in range(num_episodes):  # 試行回数分繰り返す
-        POST(name="set_QStep",data="0")
+        # POST(name="set_QStep",data="0")
         # homeポジションに移動
-        # go_home()
+        go_home(env.camera_num)
         # 環境の初期化
         observation = env._reset()
         # 状態の離散化
         state = digitize_state(observation)
         # 最初の行動選択
         action = np.argmax(q_table[state])
-        POST(name="set_action", data=str(action))
+        POST(name = "set_action_step", data = str(action)+","+str("0"))
+
         # episodeの報酬を初期化
         episode_reward=0
         # episodeReadyを1に
@@ -87,29 +93,25 @@ if __name__ == '__main__':
             if islearned == 1:  # 学習完了時の操作
                 pass
             # 弛ませながら移動
-            # POST(name="set_goHome",data="-1")
-            # leave_home()
+            # leave_home(env.pos_x,env.pos_y,env.post_pos_x,env.post_pos_y)
             # 行動a_{t}の実行によって、s_{t+1},r_{t}などを計算する
             observation, reward, done, info=env._step(action)  # ここでESP32の実行待ち
             print(observation)
             print(reward)
             episode_reward += reward  # 報酬を追加
-            # 巻き取り停止
-            stop_roll()
             # 離散状態s_{t+1}を求め、Q関数を更新する
             next_state=digitize_state(observation)  # t+1での観測状態を離散値に変換
             q_table=update_Qtable(q_table, state, action, reward, next_state)
+            np.save("./params/q_params",q_table)
+            #ログを記録
+            with open('./data/q_data.csv','a') as f:
+                dt_now = datetime.datetime.now().strftime('%Y年%m月%d日%H:%M:%S')
+                f.write("\n")
+                f.write("{},{},{},{},{},{},{}".format(dt_now,env.step-1,env.pos_x,env.pos_y,action,reward,episode_reward))
 
             # 次の行動a_{t+1}を求める
             action=get_action(next_state, episode)
             state=next_state
-
-            # サーバにa_{t+1}を送信
-            POST(name = "set_action", data = str(action))
-            POST(name="set_QStep", data=str(env.step))
-            #episodeStartを0に
-            POST(name="set_episodeStart", data="0")
-
 
             # 終了時の処理
             if done:
@@ -119,4 +121,12 @@ if __name__ == '__main__':
                                               episode_reward))  # 報酬を記録
                 # if islearned == 1:  #学習終わってたら最終のx座標を格納
                 #     final_x[episode, 0] = observation[0]
+                POST(name = "set_action_step", data = str(-1)+","+str(env.step))
+                time.sleep(7)
                 break
+
+            # サーバにa_{t+1}を送信
+            POST(name = "set_action_step", data = str(action)+","+str(env.step))
+            # POST(name="set_QStep", data=str(env.step))
+            #episodeStartを0に
+            POST(name="set_episodeStart", data="0")

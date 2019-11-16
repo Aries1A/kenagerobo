@@ -42,7 +42,9 @@ class Client(BaseHTTPRequestHandler):
         # 動作終了報告
         elif requestJson["Name"] == "set_espStep":
             espStep = int(requestJson["Data"])
-            body = b"espStep set"
+            body = "espStep: {}".format(espStep)
+            body = body.encode("utf-8")
+            # body = b"espStep set"
         # angle送信
         elif requestJson["Name"] == "set_angle":
             angle = int(requestJson["Data"])
@@ -57,14 +59,18 @@ class Client(BaseHTTPRequestHandler):
             else:
                 body = b"episode ready."
         # 現在のactionをサーバーに記録
-        elif requestJson["Name"] == "set_action":
-            action = int(requestJson["Data"])
-            body = b"action set"
-        # 現在のQのstepをサーバーに記録
-        elif requestJson["Name"] == "set_QStep":
-            QStep = int(requestJson["Data"])
-            body = "QStep set : {}".format(QStep)
+        elif requestJson["Name"] == "set_action_step":
+            action_step = requestJson["Data"].split(',')
+            action = int(action_step[0])
+            QStep = int(action_step[1])
+            body = "set action: {},Qstep: {}".format(action,QStep)
             body = body.encode("utf-8")
+            # body = b"action & step set"
+        # # 現在のQのstepをサーバーに記録
+        # elif requestJson["Name"] == "set_QStep":
+        #     QStep = int(requestJson["Data"])
+        #     body = "QStep set : {}".format(QStep)
+        #     body = body.encode("utf-8")
         # esp側のstepを取得
         elif requestJson["Name"] == "get_espStep":
             body = str(espStep).encode('utf-8')

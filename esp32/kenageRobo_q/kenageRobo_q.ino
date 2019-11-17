@@ -3,23 +3,27 @@
 #include <WiFiUdp.h>
 #include <ArduinoOTA.h>
 #include <ESP32Servo.h>
+#include <Math.h>
+#include "Wire.h"
+
+int16_t mx, my, mz;
 
 Servo myservo1, myservo2, myservo3; // 右前, 後ろ, 左前
 
-//const char* ssid = "elecom2g-c08850"; //サーバーのSSID
-//const char* password = "3A7344CE7169FD2122B9F397AA3EB79F212E5E0741AEF3BB5A5E6BC652F15C0F"; //サーバーのパスワード
-const char* ssid = "ist_members"; //サーバーのSSID
-const char* password = "8gAp3nY!s2Gm"; //サーバーのパスワード
+const char* ssid = "elecom2g-c08850"; //サーバーのSSID
+const char* password = "3A7344CE7169FD2122B9F397AA3EB79F212E5E0741AEF3BB5A5E6BC652F15C0F"; //サーバーのパスワード
+//const char* ssid = "ist_members"; //サーバーのSSID
+//const char* password = "8gAp3nY!s2Gm"; //サーバーのパスワード
 //const char* ssid="Prototyping & Design Lab. 5GHz"; //サーバーのSSID
 //const char* pass=""; //サーバーのパスワード
 
-//const char* host = "192.168.2.110";
-const char* host = "157.82.207.143";
+const char* host = "192.168.2.100";
+//const char* host = "157.82.207.143";
 
 //const int IND_NUM = 10;
 //const int EXECUTE_NUM = 3;
-const int STEP_MAX = 5;
-int state, ind_count;
+const int STEP_MAX = 100;
+int state, angle;
 int action;
 int steps = 0;
 int episode = 0;
@@ -29,59 +33,28 @@ String action_steps[2] = {"\0"};
 String postToServer(String Name = "", String Data = " ");
 
 void setup() {
+  Wire.begin(); //これ重要！！
   Serial.begin(115200);
+  setupMPU9255();
   Serial.println("Booting");
   WiFi.mode(WIFI_STA);
   WiFi.begin(ssid, password);
   while (WiFi.waitForConnectResult() != WL_CONNECTED) {
     Serial.println("Connection Failed! Rebooting...");
-    delay(5000);
+    delay(100);
     ESP.restart();
   }
-  WiFi.config(IPAddress(157, 82, 207, 142), WiFi.gatewayIP(), WiFi.subnetMask());
+  //  WiFi.config(IPAddress(157, 82, 207, 142), WiFi.gatewayIP(), WiFi.subnetMask());
   //  WiFi.config(IPAddress(192, 168, 2, 107), WiFi.gatewayIP(), WiFi.subnetMask());
-  Serial.println(WiFi.localIP());
-
-
-  //WiFi経由で書き込むためのもの
-  ArduinoOTA
-  .onStart([]() {
-    String type;
-    if (ArduinoOTA.getCommand() == U_FLASH)
-      type = "sketch";
-    else // U_SPIFFS
-      type = "filesystem";
-
-    // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
-    Serial.println("Start updating " + type);
-  })
-  .onEnd([]() {
-    Serial.println("\nEnd");
-  })
-  .onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
-  })
-  .onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
-    if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
-    else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
-    else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
-    else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
-    else if (error == OTA_END_ERROR) Serial.println("End Failed");
-  });
-
-  ArduinoOTA.begin();
-
-  Serial.println("Ready");
-  Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
   state = 0;
   myservo1.attach(2);
   myservo2.attach(4);
   myservo3.attach(18);
-//  postToServer("_reset", String(steps));
+  //  postToServer("_reset", String(steps));
   postToServer("set_espStep", String(steps));
+  postToServer("set_angle", String(angle));
 }
 
 //実行
@@ -90,8 +63,7 @@ void execute(int state) {
   action_steps[1] = "\0";
 
   if (state == 0) {
-    //遺伝子待機
-    delay(3000);
+    delay(1000);
   }
   else if (state == 1) {
     //動作
@@ -99,6 +71,7 @@ void execute(int state) {
   }
   else if (state == 2) {
     //測位待機
+    angle = readCompass();
     delay(300);
   }
   else if (state == 3) {
@@ -118,6 +91,7 @@ void setNextState(int currentstate) {
     int episodeStart = postToServer("get_episodeStart").toInt();
     if (episodeStart == 0) {
       Serial.println("not ready");
+      angle = readCompass();
       state = 0;
     }
     //取得
@@ -126,14 +100,18 @@ void setNextState(int currentstate) {
       split(action_steps_tmp, ',', action_steps);
       action = action_steps[0].toInt();
       steps = action_steps[1].toInt();
+      if (action == -1) {
+        ESP.restart();
+      }
       Serial.println("action start");
       state = 1;
     }
   }
   else if (currentstate == 1) {
     //動作終了
-    steps = steps + 1;
+    steps++;
     postToServer("set_espStep", String(steps));
+    postToServer("set_angle", String(angle));
     Serial.print("Current steps: ");
     Serial.println(String(steps));
     state = 2;
@@ -143,11 +121,11 @@ void setNextState(int currentstate) {
     split(action_steps_tmp, ',', action_steps);
     action = action_steps[0].toInt();
     Qsteps = action_steps[1].toInt();
-    if(action == -1){
+    if (action == -1) {
       ESP.restart();
-      }
+    }
     if (steps != Qsteps) {
-      if (steps % STEP_MAX == Qsteps) {
+      if (steps % STEP_MAX == Qsteps || steps > STEP_MAX) {
         Serial.println("next episode");
         steps = 0;
         state = 0;
@@ -189,7 +167,7 @@ void setNextState(int currentstate) {
 
 
 void loop() {
-  ArduinoOTA.handle();
+  //  ArduinoOTA.handle();
   Serial.println("Current State is " + String(state));
   execute(state);
 }
@@ -259,13 +237,115 @@ String postToServer(String Name, String Data) {
   return response;
 }
 
-void moveServo(int action) {
-  myservo1.write(90 - 80);
-  myservo3.write(90 + 80);
-  //  myservo3.write(90 + random(-60,61));
-  delay(2000);
-  myservo1.write(90);
-  myservo3.write(90);
-  delay(2000);
+//void moveServo(int action) {
+//  myservo1.write(90 + 80);
+//  myservo3.write(90 - 80);
+//  //  myservo3.write(90 + random(-60,61));
+//  delay(2000);
+//  myservo1.write(90);
+//  myservo3.write(90);
+//  delay(2000);
+//}
 
+
+void moveServo(int action) {
+  //速度
+  int roll_speed = 90;
+  //前進後退
+  double rot;
+  if (action % 4 == 1 || action % 4 == 2) {
+    rot = 1;
+  } else {
+    rot = -0.5;
+  }
+  //秒数
+  int second;
+  if (action % 2 == 0) {
+    second = 3;
+  } else {
+    second = 2;
+  }
+  //車輪
+  if (action % 12 >= 1 && action % 12 <= 4) {
+    myservo1.write(90 + rot * roll_speed);
+    myservo3.write(90 - rot * roll_speed);
+  }
+  else if (action % 12 >= 5 && action % 12 <= 8) {
+    myservo2.write(90 + rot * roll_speed);
+    myservo3.write(90 - rot * roll_speed);
+  }
+  else {
+    myservo1.write(90 + rot * roll_speed);
+    myservo2.write(90 - rot * roll_speed);
+  }
+  delay(second * 1000);
+  myservo1.write(90);
+  myservo2.write(90);
+  myservo3.write(90);
+  Serial.print(rot);
+  Serial.print(", ");
+  Serial.print(second);
+  Serial.print(", ");
+  Serial.println(action % 12);
+}
+
+int readCompass() {
+  Wire.beginTransmission(0x0C);
+  Wire.write(0x02);
+  Wire.endTransmission();
+  Wire.requestFrom(0x0C, 1);
+
+  uint8_t ST1 = Wire.read();
+  if (ST1 & 0x01) {
+    Wire.beginTransmission(0x0C);
+    Wire.write(0x03);
+    Wire.endTransmission();
+    Wire.requestFrom(0x0C, 7);
+    uint8_t i = 0;
+    uint8_t buf[7];
+    while (Wire.available()) {
+      buf[i++] = Wire.read();
+    }
+    if (!(buf[6] & 0x08)) {
+      mx = ((int16_t)buf[1] << 8) | buf[0];
+      my = ((int16_t)buf[3] << 8) | buf[2];
+      mz = ((int16_t)buf[5] << 8) | buf[4];
+    }
+  }
+  mx -= -82;
+  my -= 94;
+  mz -= 8;
+  mx -= 16;
+  my -= -18;
+  mz -= -6;
+  int angle = atan2(mx, my) / M_PI / 2 * 360 + 180 + 90;
+  //    String Data = String(mx) + "," + String(my) + "," + String(mz);
+  if (angle > 360) {
+    angle -= 360;
+  }
+  Serial.println(angle);
+  return angle;
+}
+
+void setupMPU9255() {
+  Wire.beginTransmission(0x68);
+  Wire.write(0x6B);
+  Wire.write(0x00);
+  Wire.endTransmission();
+
+  Wire.beginTransmission(0x68);
+  Wire.write(0x1A);
+  Wire.write(0x05);
+  Wire.endTransmission();
+
+  Wire.beginTransmission(0x68);
+  Wire.write(0x37);
+  Wire.write(0x02);
+  Wire.endTransmission();
+
+  Wire.beginTransmission(0x0C);
+  Wire.write(0x0A);
+  Wire.write(0x16);
+  Wire.endTransmission();
+  delay(500);
 }
